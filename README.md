@@ -6,14 +6,23 @@ Welcome to the project setup guide for Contoso's data processing pipeline. This 
 
 Before we embark on this adventure, ensure you have the following tools ready:
 
-- **An Azure subscription**  [free account](https://azure.microsoft.com/free)
-- **Azure CLI**: Version 2.60.0 or higher. Install from [Azure CLI's official page](https://learn.microsoft.com/cli/azure/install-azure-cli%29).
-- **Bash or WSL**: A Bash-compatible shell environment is crucial. If you're on Windows, check out [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/windows/wsl/install%29).
-- **Databricks CLI**: Optional, but recommended for cluster manipulation. Install instructions are available [here](https://learn.microsoft.com/azure/databricks/dev-tools/cli/tutorial%29), version 0.219.0 or higher.
+- **An Azure subscription**  [free account](https://azure.microsoft.com/pricing/purchase-options/azure-account?cid=msft_learn)
+- **Azure CLI**: Version 2.75.0 or higher. Install from [Azure CLI's official page](https://learn.microsoft.com/cli/azure/install-azure-cli).
+- **Bash or WSL**: A Bash-compatible shell environment is crucial. If you're on Windows, check out [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/windows/wsl/install).
+- **Databricks CLI**: Optional, but recommended for cluster manipulation. Install instructions are available [here](https://learn.microsoft.com/azure/databricks/dev-tools/cli/tutorial), version 0.258.0 or higher.
 
 ## The Contoso Data Pipeline Adventure
 
-### Step 1: Azure Login
+### Step 1: Clone repository
+
+Navigate to the directory where you want to download the code.
+
+```bash
+  git clone https://github.com/Azure-Samples/data-factory-to-databricks.git
+  cd data-factory-to-databricks
+```
+
+### Step 2: Azure Login
 
 Our journey begins with logging into Azure. Use the command below:
 
@@ -23,28 +32,27 @@ az login
 # az account set --subscription <subscription_id>
 ```
 
-### Step 2: Environment Setup
+### Step 3: Environment Setup
 
 Like any good adventure, we need to prepare our environment:
 
 ```bash
-export LOCATION=<your chosen location>
-export RESOURCEGROUP_BASE_NAME=<your resource group name>
-export RESOURCEGROUP=${RESOURCEGROUP_BASE_NAME}-${LOCATION}
-export USERNAME=<your Azure username> # This user will be the database admin
-export USER_OBJECTID=<USERNAME object id in your tenant>
-export USER_TENANTID=<Your tenant>
+export LOCATION=centralus
+export RESOURCEGROUP=rg-data-factory-to-databricks-${LOCATION}
+export USERNAME=$(az ad signed-in-user show --query mail -o tsv)
+export USER_OBJECTID=$(az ad signed-in-user show --query id -o tsv)
+export USER_TENANTID=$(az account show --query tenantId -o tsv)
 ```
 
-### 3. Resource Group Creation
+### Step 4: Resource Group Creation
 
 With our map in hand, we create a resource group in our chosen location:
 
 ```bash
-    az group create -n $RESOURCEGROUP -l $LOCATION
+  az group create -n $RESOURCEGROUP -l $LOCATION
 ```
 
-### 4. Deploying Resources
+### Step 5: Deploying Resources
 
 Using a Bicep template, we deploy the resources needed for our data processing quest:
 
@@ -52,9 +60,9 @@ Using a Bicep template, we deploy the resources needed for our data processing q
   az deployment group create -f ./main.bicep -g ${RESOURCEGROUP} -p username=${USERNAME} userObjectId=${USER_OBJECTID} userTenantId=${USER_TENANTID} secretsExpirationDate=$(date -d "+1 year" +"%s")
 ```
 
-![Contoso’s Created Resources](Resources.jpg "Contoso’s Created Resources")
+![Contoso’s Created Resources](./Resources.jpg "Contoso’s Created Resources")
 
-The Bicep template conjures up:
+The Bicep template creates:
 
 - User identity for Azure Data Factory
 - Azure Data Lake, the previous identity is a collaborator.
@@ -73,11 +81,11 @@ The pipeline consumes New York Health data. This example works with baby names h
 
 1. Retrieve the file from New York Health Data and store it in the data lake landing container
 1. LandingToBronze: A Databricks Notebook moves data to a Delta Table on bronze container.The process **appends** information and adds control metadata, including processing time and file name.
-1. BronzeToSilver: Cleansing the data, removing duplicates, and **merging** into the silver container.
+1. BronzeToSilver: Cleaning the data, removing duplicates, and **merging** into the silver container.
 1. SilverToGold: Populating a star model in the gold container.
 1. Transfer the star model (including dimension tables and fact table) from the gold container to a SQL Database.
 
-### 5. The Chronicles of Databricks Notebooks
+### Step 6: The Chronicles of Databricks Notebooks
 
 In the ./notebooks directory, you’ll find the scripts of our chronicles. Upload them to Databricks using the CLI or manually via the Azure portal.
 
@@ -105,8 +113,9 @@ To create a personal access token, do the following:
     # Upload the local notebooks to your workpace
     databricks sync ./notebooks/ /Users/${USERNAME}/myLib
 ```
+__NOTE:__  [Notebooks](https://learn.microsoft.com/azure/databricks/notebooks/) are the primary tool for creating data science and machine learning workflows on Azure Databricks. Databricks notebooks provide real-time coauthoring in multiple languages, automatic versioning, and built-in data visualizations for developing code and presenting results. You can see and read the notebooks. In this example we are using mainly Phyton and SQL.  
 
-### 6. [Databricks Secret Scope Creation](https://learn.microsoft.com/azure/databricks/security/secrets/secret-scopes#create-an-azure-key-vault-backed-secret-scope)
+### Step 7: [Databricks Secret Scope Creation](https://learn.microsoft.com/azure/databricks/security/secrets/secret-scopes#create-an-azure-key-vault-backed-secret-scope)
 
 Create an Azure Key Vault-backed secret scope to allow Databricks to access the Data Lake. The notebook will get the secrets from a Databricks Secret Scope.
 
@@ -126,7 +135,7 @@ Create an Azure Key Vault-backed secret scope to allow Databricks to access the 
   echo $DATABRICKS_KEY_VAULT_RESOURCE_ID
 ```
 
-### 7. The SQL Database Saga
+### Step 8: The SQL Database Saga
 
 Our data analyst, armed with insights, creates a star model in the SQL database to be populated by the pipeline.
 
@@ -136,28 +145,30 @@ Our data analyst, armed with insights, creates a star model in the SQL database 
 4. Enter with your the Microsoft Entra user provided to the script. The first time you do this, you’ll need to configure the firewall by following the portal instructions.
 5. Copy the code from ./sql/star_model.sql, and paste on the Query Editor
 6. Execute
-7. Review the table that was created and explore any [store procedures](https://learn.microsoft.com/azure/data-factory/connector-sql-server?tabs=data-factory#invoke-a-stored-procedure-from-a-sql-sink)
-8. **Grant permissions to the Azure Data Facrtory Managed Identity inside the Database**. Copy the code from ./UserManageIdentity.sql and paste it into the Query Editor.
+7. Review the tables that were created and explore any [store procedures](https://learn.microsoft.com/azure/data-factory/connector-sql-server?tabs=data-factory#invoke-a-stored-procedure-from-a-sql-sink)
+8. **Grant permissions to the Azure Data Factory Managed Identity inside the Database**. Copy the code from ./UserManageIdentity.sql and paste it into the Query Editor.
 9. Execute the script.
 
-### 8. Execute the Azure Data Factory Pipeline
+### Step 9: Execute the Azure Data Factory Pipeline
 
 - Go to Azure Data Factory,
 - Launch Azure Data Factory studio
 - Go to Author/Pipeline -> IngestNYBabyNames_PL
 - Add Trigger-> Trigger Now
 
-### 9. Moitoring
+### Step 10: Moitoring
 
-You can [natively monitor all of your pipeline runs](https://learn.microsoft.com/azure/data-factory/monitor-visually#monitor-pipeline-runs) in the Azure Data Factory user experience. To access the monitoring feature, select the ‘Monitor & Manage’ tile in the Data Factory blade of the Azure portal. If you’re already in the ADF UX, click on the Monitor icon in the left sidebar.  
+You can [natively monitor all of your pipeline runs](https://learn.microsoft.com/azure/data-factory/monitor-visually#monitor-pipeline-runs) in the Azure Data Factory user experience. To access the monitoring feature, select the ‘Monitor’ tile in the Data Factory Studio, and then ‘Pipeline runs’.
 
 By default, all data factory runs are displayed in the browser’s local time zone. If you change the time zone, all date/time fields adjust to the one you’ve selected.  
 
-Azure Databricks does not natively support sending log data to Azure [monitor](https://learn.microsoft.com/azure/architecture/databricks-monitoring/dashboards). owever, in the Azure Data Factory Monitoring tab, you can select the notebook execution activity (it may take some time to appear), click on the glases icon, and follow the [databricks link to check the notebock execution log](https://learn.microsoft.com/azure/data-factory/transform-data-using-databricks-notebook#monitor-the-pipeline-run).  
+Azure Databricks does not natively support sending log data to Azure [monitor](https://learn.microsoft.com/azure/architecture/databricks-monitoring/dashboards). However, you can select the notebook execution activity (it may take some time to appear), click on the glases icon, and follow the [databricks link to check the notebock execution log](https://learn.microsoft.com/azure/data-factory/transform-data-using-databricks-notebook#monitor-the-pipeline-run).  
 
 Wait for the pipeline success.
 
-### 10. The Quest for Insights
+The solution uses [Azure Data Lake Storage](https://learn.microsoft.com/azure/storage/blobs/data-lake-storage-introduction). A data lake is a single, centralized repository where you can store all your data, both structured and unstructured. Azure Data Lake Storage is a set of capabilities dedicated to big data analytics, built on Azure Blob Storage. It is possible to check it. Navigate to the resource group, select the Storage Account and see the containers. You will be able to find a 'landing' container where the .csv from api was stored, or bronze, silver and gold containers with the [delta tables](https://docs.azure.cn/databricks/tables/delta-tables-how-it-works). All new tables in Databricks are, by default created as Delta tables. A Delta table stores data as a directory of files in cloud object storage and registers that table's metadata to the metastore within a catalog and schema. 
+
+### Step 11: The Quest for Insights
 
 Execute queries in the SQL Database to uncover the most popular names and trends. Navigate to the resource group using the SQL Database-Query Editor again.
 
@@ -181,7 +192,7 @@ GROUP BY y.year
 ORDER BY total_count DESC
 ```
 
-### 11. The Journey’s End
+### Step 12: The Journey’s End
 
 When you're done, delete the resources and the resource group:
 
