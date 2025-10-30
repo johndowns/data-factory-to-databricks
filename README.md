@@ -66,9 +66,9 @@ The Bicep template creates:
 
 - User identity for Azure Data Factory
 - Azure Data Lake, the previous identity is a collaborator.
-- Azure Databricks Workpace, the previous identity is a collaborator.
-- A SQL Database which will allows only Microsoft Entra users, the previous identity is an user.
-- Azure Data Factory. The previous identity is asociated
+- Azure Databricks Workspace, the previous identity is a collaborator.
+- A SQL Database that allows access only to Microsoft Entra users, the previous identity is an user.
+- Azure Data Factory. The previous identity is associated
   - The Azure Data Factory contains a Pipeline
 - A Databricks Key Vault. It includes Azure Data Lake secrets which will be used by databricks.
 
@@ -89,7 +89,7 @@ The pipeline consumes New York Health data. This example works with baby names h
 
 In the ./notebooks directory, you’ll find the scripts of our chronicles. Upload them to Databricks using the CLI or manually via the Azure portal.
 
-Manually, it could be done inside databricks. Inside the workspace section you can import. Azure data factory assumes that the notebooks are inside a _myLib_ folder in the user workspace.
+Manually, it could be done inside databricks. You can import notebooks from the workspace section in the Azure Databricks UI. Azure data factory assumes that the notebooks are inside a _myLib_ folder in the user workspace.
 
 Using Azure databricks cli, we need a token to authenticate the cli to the cluster. [Azure Databricks personal access token authentication](https://learn.microsoft.com/azure/databricks/dev-tools/cli/authentication#--azure-databricks-personal-access-token-authentication)  
 To create a personal access token, do the following: 
@@ -106,24 +106,24 @@ To create a personal access token, do the following:
     #  Upload databricks notebook using databriks cli
 
     # Authenticate databricks cli
-    export DATABRICKS_WORKPACE_URL=$(az deployment group show -g ${RESOURCEGROUP} --name main --query properties.outputs.databricksWorkspaceUrl.value --output tsv)
-    databricks configure --host $DATABRICKS_WORKPACE_URL
+    export DATABRICKS_WORKSPACE_URL=$(az deployment group show -g ${RESOURCEGROUP} --name main --query properties.outputs.databricksWorkspaceUrl.value --output tsv)
+    databricks configure --host $DATABRICKS_WORKSPACE_URL
     # For the prompt Personal Access Token, enter the Azure Databricks personal access token for your workspace
 
-    # Upload the local notebooks to your workpace
+    # Upload the local notebooks to your workspace
     databricks sync ./notebooks/ /Users/${USERNAME}/myLib
 ```
-__NOTE:__  [Notebooks](https://learn.microsoft.com/azure/databricks/notebooks/) are the primary tool for creating data science and machine learning workflows on Azure Databricks. Databricks notebooks provide real-time coauthoring in multiple languages, automatic versioning, and built-in data visualizations for developing code and presenting results. You can see and read the notebooks. In this example we are using mainly Phyton and SQL.  
+__NOTE:__  [Notebooks](https://learn.microsoft.com/azure/databricks/notebooks/) are the primary tool for creating data science and machine learning workflows on Azure Databricks. Databricks notebooks provide real-time coauthoring in multiple languages, automatic versioning, and built-in data visualizations for developing code and presenting results. You can see and read the notebooks using Visual Studio Code, the notebooks have comments explaining what they are doing. In this example we are using mainly Python and SQL.  
 
 ### Step 7: [Databricks Secret Scope Creation](https://learn.microsoft.com/azure/databricks/security/secrets/secret-scopes#create-an-azure-key-vault-backed-secret-scope)
 
 Create an Azure Key Vault-backed secret scope to allow Databricks to access the Data Lake. The notebook will get the secrets from a Databricks Secret Scope.
 
-1. Go to https://-databricks-instance-/**#secrets/createScope**. Replace -databricks-instance- with the workspace URL of your Azure Databricks deployment. This URL is case sensitive (scope in createScope must be uppercase).
+1. Go to https://-databricks-instance-/**#secrets/createScope**. Replace -databricks-instance- with the workspace URL of your Azure Databricks deployment. Note: The scope name in the URL must be uppercase.
 
 2. Enter the name of the secret scope. Our notebook expect **dataLakeScope**
 
-3. Set Managed Principal to 'All workpace users'
+3. Set Managed Principal to 'All workspace users'
 
 4. Complete dns name and resource id
 
@@ -142,11 +142,11 @@ Our data analyst, armed with insights, creates a star model in the SQL database 
 1. Navigate to the resource group using the Azure Portal.
 2. Select the SQL Database
 3. Select the Query Editor
-4. Enter with your the Microsoft Entra user provided to the script. The first time you do this, you’ll need to configure the firewall by following the portal instructions.
+4. Enter with your Microsoft Entra user provided to the script. The first time you do this, you’ll need to configure the firewall by following the portal instructions.
 5. Copy the code from ./sql/star_model.sql, and paste on the Query Editor
 6. Execute
-7. Review the tables that were created and explore any [store procedures](https://learn.microsoft.com/azure/data-factory/connector-sql-server?tabs=data-factory#invoke-a-stored-procedure-from-a-sql-sink)
-8. **Grant permissions to the Azure Data Factory Managed Identity inside the Database**. Copy the code from ./UserManageIdentity.sql and paste it into the Query Editor.
+7. Review the tables that were created and explore any [stored procedures](https://learn.microsoft.com/azure/data-factory/connector-sql-server?tabs=data-factory#invoke-a-stored-procedure-from-a-sql-sink)
+8. **Grant permissions to the Azure Data Factory Managed Identity inside the Database**. Copy the code from ./sql/UserManageIdentity.sql and paste it into the Query Editor.
 9. Execute the script.
 
 ### Step 9: Execute the Azure Data Factory Pipeline
@@ -156,13 +156,13 @@ Our data analyst, armed with insights, creates a star model in the SQL database 
 - Go to Author/Pipeline -> IngestNYBabyNames_PL
 - Add Trigger-> Trigger Now
 
-### Step 10: Moitoring
+### Step 10: Monitoring
 
 You can [natively monitor all of your pipeline runs](https://learn.microsoft.com/azure/data-factory/monitor-visually#monitor-pipeline-runs) in the Azure Data Factory user experience. To access the monitoring feature, select the ‘Monitor’ tile in the Data Factory Studio, and then ‘Pipeline runs’.
 
 By default, all data factory runs are displayed in the browser’s local time zone. If you change the time zone, all date/time fields adjust to the one you’ve selected.  
 
-Azure Databricks does not natively support sending log data to Azure [monitor](https://learn.microsoft.com/azure/architecture/databricks-monitoring/dashboards). However, you can select the notebook execution activity (it may take some time to appear), click on the glases icon, and follow the [databricks link to check the notebock execution log](https://learn.microsoft.com/azure/data-factory/transform-data-using-databricks-notebook#monitor-the-pipeline-run).  
+Azure Databricks does not natively support sending log data to Azure [monitor](https://learn.microsoft.com/azure/architecture/databricks-monitoring/dashboards). However, you can select the notebook execution activity (it may take some time to appear), click on the glasses icon, and follow the [databricks link to check the notebook execution log](https://learn.microsoft.com/azure/data-factory/transform-data-using-databricks-notebook#monitor-the-pipeline-run).  
 
 Wait for the pipeline success.
 
@@ -170,7 +170,7 @@ The solution uses [Azure Data Lake Storage](https://learn.microsoft.com/azure/st
 
 ### Step 11: The Quest for Insights
 
-Execute queries in the SQL Database to uncover the most popular names and trends. Navigate to the resource group using the SQL Database-Query Editor again.
+After the pipeline populates the database, you can execute queries in the SQL Database to uncover the most popular names and trends. To do this, navigate to the resource group and open the SQL Database Query Editor.
 
 ```sql
 -- most common female names used in New York in 2019

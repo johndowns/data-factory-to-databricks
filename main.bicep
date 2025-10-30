@@ -20,6 +20,7 @@ param username string
 @description('Specifies the Azure Active Directory tenant ID that should be used for authenticating requests to the key vault. Get it by using Get-AzSubscription cmdlet.')
 param tenantId string = subscription().tenantId
 
+@description('Secrets expiration date. It is expected in Unix timestamp format.')
 param secretsExpirationDate int
 
 // --- Variables
@@ -39,7 +40,7 @@ var keyVaultName = 'dbricksKV${uniqueName}'
 @description('The adf Key Vault name.')
 var adfKeyVaultName = 'adfkeyVault${uniqueName}'
 @description('Log Analytic Workspace')
-var logAnalyticsWorkspaceName = 'datafactoryworkpace-${uniqueName}'
+var logAnalyticsWorkspaceName = 'datafactoryworkspace-${uniqueName}'
 
 var httpNYHealhDataLinkedServiceName = 'httpNYHealhData_LS'
 var dataLakeStoreLinkedServiceName = 'dataLakeStore_LS'
@@ -122,7 +123,7 @@ resource dataLakeStoreLinkedService 'Microsoft.DataFactory/factories/linkedservi
   }
 }
 
-resource databriksLinkedService 'Microsoft.DataFactory/factories/linkedservices@2018-06-01' = {
+resource databricksLinkedService 'Microsoft.DataFactory/factories/linkedservices@2018-06-01' = {
   parent: dataFactory
   name: databricksLinkedServiceName
   properties: {
@@ -197,7 +198,7 @@ resource csvDataSet 'Microsoft.DataFactory/factories/datasets@2018-06-01' = {
     typeProperties: {
       location: {
         type: 'AzureBlobFSLocation'
-        fileName: '@concat(\'nybabynames-\',formatDatetime(utcnow(),\'dd-MM-yyy\'),\'.csv\')'
+        fileName: '@concat(\'nybabynames-\',formatDatetime(utcnow(),\'dd-MM-yyyy\'),\'.csv\')'
         fileSystem: landingContainerName
       }
       columnDelimiter: ','
@@ -308,7 +309,7 @@ resource dataFactoryPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-
           }
         }
         linkedServiceName: {
-          referenceName: databriksLinkedService.name
+          referenceName: databricksLinkedService.name
           type: 'LinkedServiceReference'
         }
       }
@@ -331,7 +332,7 @@ resource dataFactoryPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-
           }
         }
         linkedServiceName: {
-          referenceName: databriksLinkedService.name
+          referenceName: databricksLinkedService.name
           type: 'LinkedServiceReference'
         }
       }
@@ -354,7 +355,7 @@ resource dataFactoryPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-
           }
         }
         linkedServiceName: {
-          referenceName: databriksLinkedService.name
+          referenceName: databricksLinkedService.name
           type: 'LinkedServiceReference'
         }
       }
