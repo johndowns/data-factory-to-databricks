@@ -17,12 +17,6 @@ param userTenantId string
 @description('The username that is deploying, the databricks workpace of the user will have the notebook and The Microsoft Entra ID user to be database admin')
 param username string
 
-@description('Specifies the Azure Active Directory tenant ID that should be used for authenticating requests to the key vault. Get it by using Get-AzSubscription cmdlet.')
-param tenantId string = subscription().tenantId
-
-@description('Secrets expiration date. It is expected in Unix timestamp format.')
-param secretsExpirationDate int
-
 // --- Variables
 var uniqueName = uniqueString(resourceGroup().id)
 @description('Data Factory Name')
@@ -35,12 +29,10 @@ var datalakeStoreName = 'datalake${uniqueName}'
 var serverName = 'sqlserver-${uniqueName}'
 @description('The name of the SQL Database.')
 var sqlDBName = 'SampleDB-${uniqueName}'
-@description('The databricks Key Vault name.')
-var keyVaultName = 'dbricksKV${uniqueName}'
-@description('The adf Key Vault name.')
-var adfKeyVaultName = 'adfkeyVault${uniqueName}'
 @description('Log Analytic Workspace')
 var logAnalyticsWorkspaceName = 'datafactoryworkspace-${uniqueName}'
+@description('The name of the Azure Databricks access connector to create.')
+var accessConnectorName = 'adb-access-connector-${uniqueName}'
 
 var httpNYHealhDataLinkedServiceName = 'httpNYHealhData_LS'
 var dataLakeStoreLinkedServiceName = 'dataLakeStore_LS'
@@ -68,9 +60,18 @@ var storageBlobDataContributorRole = subscriptionResourceId(
 
 // --- Resources
 
-resource dataFactoryUserIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2025-01-31-preview' = {
+resource dataFactoryUserIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview' = {
   name: 'dataFactoryUserIdentity'
   location: resourceGroup().location
+}
+
+resource databricksAccessConnector 'Microsoft.Databricks/accessConnectors@2024-05-01' = {
+  name: accessConnectorName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {}
 }
 
 resource dataFactory 'Microsoft.DataFactory/factories@2018-06-01' = {
@@ -138,7 +139,7 @@ resource databricksLinkedService 'Microsoft.DataFactory/factories/linkedservices
       authentication: 'MSI'
       newClusterNodeType: 'Standard_DS3_v2'
       newClusterNumOfWorker: 1
-      newClusterVersion: '14.3.x-scala2.12'
+      newClusterVersion: '15.4.x-scala2.12'
       newClusterInitScripts: []
     }
   }
@@ -304,8 +305,9 @@ resource dataFactoryPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-
           notebookPath: '/Users/${username}/myLib/landingToBronze'
           baseParameters: {
             _pipeline_run_id: '@pipeline().RunId'
-            _filename: '@concat(\'nybabynames-\',formatDatetime(utcnow(),\'dd-MM-yyy\'),\'.csv\')'
-            _processing_date: '@formatDatetime(utcnow(),\'dd-MM-yyy HH:mm:ss\')'
+            _filename: '@concat(\'nybabynames-\',formatDatetime(utcnow(),\'dd-MM-yyyy\'),\'.csv\')'
+            _processing_date: '@formatDatetime(utcnow(),\'dd-MM-yyyy HH:mm:ss\')'
+            _account_name: dataLakeStore.name
           }
         }
         linkedServiceName: {
@@ -328,7 +330,8 @@ resource dataFactoryPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-
           notebookPath: '/Users/${username}/myLib/bronzeToSilver'
           baseParameters: {
             _pipeline_run_id: '@pipeline().RunId'
-            _processing_date: '@formatDatetime(utcnow(),\'dd-MM-yyy\')'
+            _processing_date: '@formatDatetime(utcnow(),\'dd-MM-yyyy\')'
+            _account_name: dataLakeStore.name
           }
         }
         linkedServiceName: {
@@ -351,7 +354,8 @@ resource dataFactoryPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-
           notebookPath: '/Users/${username}/myLib/silverToGold'
           baseParameters: {
             _pipeline_run_id: '@pipeline().RunId'
-            _processing_date: '@formatDatetime(utcnow(),\'dd-MM-yyy\')'
+            _processing_date: '@formatDatetime(utcnow(),\'dd-MM-yyyy\')'
+            _account_name: dataLakeStore.name
           }
         }
         linkedServiceName: {
@@ -768,13 +772,14 @@ resource managedResourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' ex
   name: managedResourceGroupName
 }
 
-resource databricksWorkspace 'Microsoft.Databricks/workspaces@2025-03-01-preview' = {
+resource databricksWorkspace 'Microsoft.Databricks/workspaces@2026-01-01' = {
   name: workspaceName
   location: location
   sku: {
     name: 'premium'
   }
   properties: {
+    computeMode: 'Hybrid'
     managedResourceGroupId: managedResourceGroup.id
     parameters: {
       enableNoPublicIp: {
@@ -812,7 +817,7 @@ resource adfToDataBricksContributorRoleAssignment 'Microsoft.Authorization/roleA
   }
 }
 
-resource dataLakeStore 'Microsoft.Storage/storageAccounts@2025-06-01' = {
+resource dataLakeStore 'Microsoft.Storage/storageAccounts@2026-04-01' = {
   name: datalakeStoreName
   location: location
   sku: {
@@ -848,7 +853,17 @@ resource adfToDataLakeStoreContributorRoleAssignment 'Microsoft.Authorization/ro
   ]
 }
 
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2025-06-01' = {
+resource accessConnectorToDataLakeStoreContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataLakeStore.id, databricksAccessConnector.id, 'Storage Blob Data Contributor')
+  scope: dataLakeStore
+  properties: {
+    roleDefinitionId: storageBlobDataContributorRole
+    principalId: databricksAccessConnector.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2026-04-01' = {
   name: 'default'
   parent: dataLakeStore
   properties: {
@@ -867,7 +882,7 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2025-06-01'
   }
 }
 
-resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2025-06-01' = {
+resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2026-04-01' = {
   name: 'default'
   parent: dataLakeStore
   properties: {
@@ -884,101 +899,27 @@ resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2025-06-01'
   }
 }
 
-resource landingContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2025-06-01' = {
+resource landingContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2026-04-01' = {
   parent: blobService
   name: landingContainerName
 }
 
-resource bronzeContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2025-06-01' = {
+resource bronzeContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2026-04-01' = {
   parent: blobService
   name: bronzeContainerName
 }
 
-resource silverContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2025-06-01' = {
+resource silverContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2026-04-01' = {
   parent: blobService
   name: silverContainerName
 }
 
-resource goldContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2025-06-01' = {
+resource goldContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2026-04-01' = {
   parent: blobService
   name: goldContainerName
 }
 
-resource kv 'Microsoft.KeyVault/vaults@2025-05-01' = {
-  name: keyVaultName
-  location: location
-  properties: {
-    enabledForDeployment: false
-    enabledForDiskEncryption: false
-    enabledForTemplateDeployment: false
-    tenantId: tenantId
-    enableSoftDelete: true
-    softDeleteRetentionInDays: 90
-    enablePurgeProtection: true
-    accessPolicies: []
-    sku: {
-      name: 'standard'
-      family: 'A'
-    }
-    networkAcls: {
-      defaultAction: 'Allow'
-      bypass: 'AzureServices'
-    }
-  }
-}
-
-resource accountNameSecret 'Microsoft.KeyVault/vaults/secrets@2025-05-01' = {
-  parent: kv
-  name: 'accountName'
-  properties: {
-    value: dataLakeStore.name
-    attributes: {
-      exp: secretsExpirationDate
-    }
-  }
-}
-
-resource accountKeySecret 'Microsoft.KeyVault/vaults/secrets@2025-05-01' = {
-  parent: kv
-  name: 'accountKey'
-  properties: {
-    value: dataLakeStore.listKeys().keys[0].value
-    attributes: {
-      exp: secretsExpirationDate
-    }
-  }
-}
-
-resource kvDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: 'KeyVaultDiagSettings'
-  scope: kv
-  properties: {
-    logs: [
-      {
-        category: 'AuditEvent'
-        enabled: true
-        retentionPolicy: {
-          enabled: false
-          days: 0
-        }
-      }
-    ]
-    metrics: [
-      {
-        category: 'AllMetrics'
-        enabled: true
-        retentionPolicy: {
-          enabled: false
-          days: 0
-        }
-      }
-    ]
-    // Specify the destination for logs and metrics
-    workspaceId: logAnalyticsWorkspace.id // Log Analytics Workspace for storing logs
-  }
-}
-
-resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
+resource sqlServer 'Microsoft.Sql/servers@2025-02-01-preview' = {
   name: serverName
   location: location
   properties: {
@@ -998,7 +939,7 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   identity: {
     type: 'SystemAssigned'
   }
-  resource activeDirectoryAdmin 'administrators@2024-11-01-preview' = {
+  resource activeDirectoryAdmin 'administrators@2025-02-01-preview' = {
     name: 'ActiveDirectory'
     properties: {
       administratorType: 'ActiveDirectory'
@@ -1007,8 +948,7 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
       tenantId: userTenantId
     }
   }
-
-  resource sqlADOnlyAuth 'azureADOnlyAuthentications@2024-11-01-preview' = {
+    resource sqlADOnlyAuth 'azureADOnlyAuthentications@2025-02-01-preview' = {
     name: 'Default'
     properties: {
       azureADOnlyAuthentication: true
@@ -1027,7 +967,7 @@ resource diagnosticSettingsSqlServer 'Microsoft.Insights/diagnosticSettings@2021
   }
 }
 
-resource sqlDB 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {
+resource sqlDB 'Microsoft.Sql/servers/databases@2025-02-01-preview' = {
   parent: sqlServer
   name: sqlDBName
   location: location
@@ -1049,7 +989,7 @@ resource sqlDB 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {
   ]
 }
 
-resource auditingDbSettings 'Microsoft.Sql/servers/databases/auditingSettings@2024-11-01-preview' = {
+resource auditingDbSettings 'Microsoft.Sql/servers/databases/auditingSettings@2025-02-01-preview' = {
   parent: sqlDB
   name: 'default'
   properties: {
@@ -1066,7 +1006,7 @@ resource auditingDbSettings 'Microsoft.Sql/servers/databases/auditingSettings@20
   }
 }
 
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2021-06-01' = {
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
   name: logAnalyticsWorkspaceName
   location: location
   properties: {
@@ -1095,7 +1035,7 @@ resource diagnosticSettingsSqlDb 'Microsoft.Insights/diagnosticSettings@2021-05-
   }
 }
 
-resource auditingServerSettings 'Microsoft.Sql/servers/auditingSettings@2024-11-01-preview' = {
+resource auditingServerSettings 'Microsoft.Sql/servers/auditingSettings@2025-02-01-preview' = {
   parent: sqlServer
   name: 'default'
   properties: {
@@ -1109,7 +1049,7 @@ resource auditingServerSettings 'Microsoft.Sql/servers/auditingSettings@2024-11-
   }
 }
 
-resource sqlVulnerabilityAssessment 'Microsoft.Sql/servers/sqlVulnerabilityAssessments@2024-11-01-preview' = {
+resource sqlVulnerabilityAssessment 'Microsoft.Sql/servers/sqlVulnerabilityAssessments@2025-02-01-preview' = {
   name: 'default'
   parent: sqlServer
   properties: {
@@ -1144,7 +1084,12 @@ output resourceId string = dataFactoryPipeline.id
 output databriksManagedResourceGroup string = managedResourceGroupName
 output location string = location
 output databricksWorkspaceUrl string = 'https://${databricksWorkspace.properties.workspaceUrl}'
-output databricksKeyVaultName string = keyVaultName
-output databricksKeyVaultUrl string = kv.properties.vaultUri
-output databricksKeyVaultResourceId string = kv.id
-output adfKeyVaultName string = adfKeyVaultName
+output storageAccountName string = dataLakeStore.name
+output storageAccountResourceId string = dataLakeStore.id
+output dataFactoryUserManagedIdentityName string = dataFactoryUserIdentity.name
+output dataFactoryUserManagedIdentityResourceId string = dataFactoryUserIdentity.id
+output dataFactoryUserManagedIdentityPrincipalId string = dataFactoryUserIdentity.properties.principalId
+output dataFactoryUserManagedIdentityClientId string = dataFactoryUserIdentity.properties.clientId
+output databricksAccessConnectorName string = databricksAccessConnector.name
+output databricksAccessConnectorId string = databricksAccessConnector.id
+output databricksAccessConnectorPrincipalId string = databricksAccessConnector.identity.principalId
